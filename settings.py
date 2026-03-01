@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt
 
 
-class settings(QMainWindow):
+class Settings(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Редактирование настроек")
