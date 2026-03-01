@@ -5,7 +5,7 @@ from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import Qt
 
 from settings import settings
-from cabinet import cabinetViewer
+from CabinetViewer import CabinetViewer
 
 
 class MainWindow(QMainWindow):
