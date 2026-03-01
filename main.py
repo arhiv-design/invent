@@ -5,6 +5,7 @@ from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import Qt
 
 from settings import settings
+from cabinet import cabinetViewer
 
 
 class MainWindow(QMainWindow):
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow):
         # 2. Меню "Кабинеты"
         rooms_menu = menubar.addMenu("Кабинеты")
         rooms_menu.triggered.connect(self.show_rooms_list)
+        menubar.addAction(rooms_menu)
 
         settings_action = QAction("Настройки", self)
         settings_action.triggered.connect(self.show_nasty)
@@ -63,8 +65,8 @@ class MainWindow(QMainWindow):
         print("Выбрано: Компьютеры -> Список компьютеров")
 
     def show_rooms_list(self):
-        self.statusBar().showMessage("Показан список кабинетов")
-        print("Выбрано: Кабинеты -> Список кабинетов")
+        self.room = cabinetViewer()
+        self.room.show()
 
 
     def show_about_info(self):
