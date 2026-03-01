@@ -4,8 +4,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QMenuBar, QMenu,
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import Qt
 
-from settings import settings
-from CabinetViewer import CabinetViewer
+from cabinetViewer import CabinetViewer
+from settings import Settings
 
 
 class MainWindow(QMainWindow):
@@ -13,7 +13,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         # Настройка главного окна
+        self.room = None
         self.sett = None
+
         self.setWindowTitle("Главное окно приложения")
         self.setGeometry(100, 100, 800, 600)  # x, y, width, height
 
@@ -39,9 +41,9 @@ class MainWindow(QMainWindow):
         computers_menu = menubar.addMenu("Компьютеры")
         computers_menu.triggered.connect(self.show_computers_list)
         # 2. Меню "Кабинеты"
-        rooms_menu = menubar.addMenu("Кабинеты")
-        rooms_menu.triggered.connect(self.show_rooms_list)
-        menubar.addAction(rooms_menu)
+        rooms_action = QAction("Кабинеты", self)
+        rooms_action.triggered.connect(self.rooms_list)
+        menubar.addAction(rooms_action)
 
         settings_action = QAction("Настройки", self)
         settings_action.triggered.connect(self.show_nasty)
@@ -64,9 +66,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Показан список компьютеров")
         print("Выбрано: Компьютеры -> Список компьютеров")
 
-    def show_rooms_list(self):
-        self.room = cabinetViewer()
+    def rooms_list(self):
+        self.room = CabinetViewer()
         self.room.show()
+
 
 
     def show_about_info(self):
@@ -74,7 +77,7 @@ class MainWindow(QMainWindow):
         print("Выбрано: Об авторе -> Информация")
 
     def show_nasty(self):
-        self.sett = settings()
+        self.sett = Settings()
         self.sett.show()
         print("Выбрано: Справка -> О программе")
 
