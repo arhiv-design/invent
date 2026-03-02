@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 
 from cabinetViewer import CabinetViewer
 from settings import Settings
+from computersViewer import ComputersViewer
 
 
 class MainWindow(QMainWindow):
@@ -15,6 +16,7 @@ class MainWindow(QMainWindow):
         # Настройка главного окна
         self.room = None
         self.sett = None
+        self.computers = None
 
         self.setWindowTitle("Главное окно приложения")
         self.setGeometry(100, 100, 800, 600)  # x, y, width, height
@@ -38,8 +40,10 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         # 1. Меню "Компьютеры"
-        computers_menu = menubar.addMenu("Компьютеры")
+        computers_menu = QAction("Компьютеры",self)
         computers_menu.triggered.connect(self.show_computers_list)
+        menubar.addAction(computers_menu)
+
         # 2. Меню "Кабинеты"
         rooms_action = QAction("Кабинеты", self)
         rooms_action.triggered.connect(self.rooms_list)
@@ -63,9 +67,8 @@ class MainWindow(QMainWindow):
 
     # Слоты для обработки действий меню
     def show_computers_list(self):
-        self.statusBar().showMessage("Показан список компьютеров")
-        print("Выбрано: Компьютеры -> Список компьютеров")
-
+       self.computers = ComputersViewer()
+       self.computers.show()
     def rooms_list(self):
         self.room = CabinetViewer()
         self.room.show()

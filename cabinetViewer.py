@@ -72,7 +72,7 @@ class CabinetViewer(QMainWindow):
 
     def init_ui(self):
         """Инициализация пользовательского интерфейса"""
-        self.setWindowTitle("Управление данными invent.cabinet")
+        self.setWindowTitle("Управление кабинетами")
         self.setGeometry(100, 100, 900, 600)
 
         # Центральный виджет
