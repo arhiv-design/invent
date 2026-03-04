@@ -429,9 +429,7 @@ class ComputerDialog(QDialog):
         for i, spec in enumerate(self.specs):
             # Название характеристики
             name_item = QTableWidgetItem(spec[0])
-            # Сохраняем ID характеристики в данных элемента
-            if len(spec) > 2 and spec[2] is not None:
-                name_item.setData(Qt.ItemDataRole.UserRole, spec[2])
+            name_item.setData(Qt.ItemDataRole.UserRole, spec[2] if len(spec) > 2 else None)  # Сохраняем ID
             self.specs_table.setItem(i, 0, name_item)
 
             # Значение
@@ -499,21 +497,17 @@ class ComputerDialog(QDialog):
 
         if specs:
             added_count = 0
-            updated_count = 0
             for spec_name, spec_value in specs.items():
                 # Проверяем, есть ли уже такая характеристика
-                found = False
-                for i, spec in enumerate(self.specs):
-                    if spec[0].lower() == spec_name.lower():
-                        # Обновляем существующую
-                        self.specs[i][1] = spec_value
-                        found = True
-                        updated_count += 1
-                        break
-
-                if not found:
+                if not self.spec_exists(spec_name):
                     self.specs.append([spec_name, spec_value, None])
-                    added_count += 1
+                    added_count += 16
+                else:
+                    # Обновляем существующую
+                    for i, spec in enumerate(self.specs):
+                        if spec[0] == spec_name:
+                            self.specs[i][1] = spec_value
+                            break
 
             # Обновляем таблицу
             self.load_specifications()
@@ -526,8 +520,7 @@ class ComputerDialog(QDialog):
                 f"• Оперативная память: {specs.get('Оперативная память', 'Не определена')}\n"
                 f"• Жесткий диск: {specs.get('Жесткий диск', 'Не определен')}\n"
                 f"• ОС: {specs.get('Операционная система', 'Не определена')}\n"
-                + (f"• Ключ Windows: {specs.get('Ключ Windows', '')}\n" if 'Ключ Windows' in specs else "") +
-                f"\nДобавлено: {added_count}, Обновлено: {updated_count}"
+                + (f"• Ключ Windows: {specs.get('Ключ Windows', '')}\n" if 'Ключ Windows' in specs else "")
             )
         else:
             QMessageBox.warning(self, "Ошибка", "Не удалось загрузить системные характеристики")
@@ -550,8 +543,7 @@ class ComputerDialog(QDialog):
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             name, value = dialog.get_data()
-            # Добавляем с None в качестве ID (новая запись)
-            self.specs.append([name, value, None])
+            self.specs.append([name, value, None])  # None - это ID (для новых записей)
             self.load_specifications()
 
     def edit_specification(self):
@@ -568,7 +560,6 @@ class ComputerDialog(QDialog):
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             name, value = dialog.get_data()
-            # Сохраняем ID если он был
             self.specs[current_row] = [name, value, spec_id]
             self.load_specifications()
 
@@ -726,8 +717,31 @@ class ComputersViewer(QMainWindow):
         try:
             conn = sqlite3.connect('settings.db')
             cursor = conn.cursor()
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS nastr (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip TEXT NOT NULL,
+                    database TEXT NOT NULL,
+                    login TEXT NOT NULL,
+                    password TEXT NOT NULL
+                )
+            ''')
+
+            cursor.execute("SELECT COUNT(*) FROM nastr")
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                cursor.execute('''
+                    INSERT INTO nastr (ip, database, login, password)
+                    VALUES (?, ?, ?, ?)
+                ''', ('localhost', 'ont', 'postgres', 'postgres'))
+                conn.commit()
+                self.statusBar().showMessage("Добавлены настройки по умолчанию")
+
             cursor.execute("SELECT ip, db, login, password FROM nastr LIMIT 1")
             row = cursor.fetchone()
+
             if row:
                 self.connection_params = {
                     'host': row[0],
@@ -756,9 +770,89 @@ class ComputersViewer(QMainWindow):
             conn = psycopg2.connect(**self.connection_params)
             cursor = conn.cursor()
 
+            # Проверяем существование схемы invent и таблиц
+            cursor.execute("CREATE SCHEMA IF NOT EXISTS invent")
+
+            # Создаем таблицу computers
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS invent.computers (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    inventory_number VARCHAR(100) UNIQUE,
+                    manufacturer VARCHAR(100),
+                    model VARCHAR(255),
+                    purchase_date DATE
+                )
+            """)
+
+            # Создаем таблицу computer_specs для характеристик
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS invent.computer_specs (
+                    id SERIAL PRIMARY KEY,
+                    computer_id INTEGER NOT NULL REFERENCES invent.computers(id) ON DELETE CASCADE,
+                    spec_name VARCHAR(100) NOT NULL,
+                    value TEXT NOT NULL,
+                    UNIQUE(computer_id, spec_name)
+                )
+            """)
+
             # Проверяем, есть ли данные в computers
             cursor.execute("SELECT COUNT(*) FROM invent.computers")
             count = cursor.fetchone()[0]
+
+            if count == 0:
+                # Добавляем тестовые данные
+                test_data = [
+                    ('Workstation-01', 'INV-001', 'Dell', 'OptiPlex 7080', '2022-01-15'),
+                    ('Workstation-02', 'INV-002', 'HP', 'EliteDesk 800', '2022-03-20'),
+                    ('Server-01', 'INV-003', 'Supermicro', 'X11DPi-N', '2021-11-10')
+                ]
+
+                for data in test_data:
+                    cursor.execute("""
+                        INSERT INTO invent.computers 
+                        (name, inventory_number, manufacturer, model, purchase_date) 
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, data)
+                    computer_id = cursor.fetchone()[0]
+
+                    # Добавляем характеристики для каждого компьютера
+                    if computer_id == 1:  # Workstation-01
+                        specs = [
+                            ('Процессор', 'Intel Core i7-10700'),
+                            ('Оперативная память', '16GB DDR4'),
+                            ('Видеокарта', 'NVIDIA Quadro P620'),
+                            ('Жесткий диск', '512GB SSD'),
+                            ('Операционная система', 'Windows 10 Pro'),
+                            ('Ключ Windows', 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX')
+                        ]
+                    elif computer_id == 2:  # Workstation-02
+                        specs = [
+                            ('Процессор', 'AMD Ryzen 5 5600X'),
+                            ('Оперативная память', '32GB DDR4'),
+                            ('Жесткий диск', '1TB NVMe SSD'),
+                            ('Операционная система', 'Windows 11 Pro'),
+                            ('Ключ Windows', 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX')
+                        ]
+                    else:  # Server-01
+                        specs = [
+                            ('Процессор', 'Intel Xeon Silver 4210'),
+                            ('Оперативная память', '64GB DDR4 ECC'),
+                            ('Жесткий диск', '2x 1TB SSD RAID1'),
+                            ('Операционная система', 'Windows Server 2019'),
+                            ('Ключ Windows', 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX')
+                        ]
+
+                    for spec in specs:
+                        cursor.execute("""
+                            INSERT INTO invent.computer_specs (computer_id, spec_name, value)
+                            VALUES (%s, %s, %s)
+                        """, (computer_id, spec[0], spec[1]))
+
+                conn.commit()
+                self.statusBar().showMessage("Созданы тестовые данные с характеристиками")
+
             # Получаем данные с количеством характеристик
             cursor.execute("""
                 SELECT 
@@ -828,7 +922,6 @@ class ComputersViewer(QMainWindow):
             cursor.close()
             conn.close()
 
-            # Возвращаем список [название, значение, id]
             return [[s[0], s[1], s[2]] for s in specs]
 
         except psycopg2.Error as e:
@@ -859,20 +952,11 @@ class ComputersViewer(QMainWindow):
 
                 # Добавляем характеристики
                 for spec in specs:
-                    spec_name, spec_value, spec_id = spec
-                    if spec_name and spec_value:  # Проверяем, что поля не пустые
-                        try:
-                            cursor.execute("""
-                                INSERT INTO invent.computer_specs (computer_id, spec_name, value)
-                                VALUES (%s, %s, %s)
-                            """, (computer_id, spec_name, spec_value))
-                        except psycopg2.IntegrityError:
-                            # Если характеристика с таким именем уже существует, обновляем её
-                            cursor.execute("""
-                                UPDATE invent.computer_specs
-                                SET value = %s
-                                WHERE computer_id = %s AND spec_name = %s
-                            """, (spec_value, computer_id, spec_name))
+                    if spec[0] and spec[1]:  # Проверяем, что поля не пустые
+                        cursor.execute("""
+                            INSERT INTO invent.computer_specs (computer_id, spec_name, value)
+                            VALUES (%s, %s, %s)
+                        """, (computer_id, spec[0], spec[1]))
 
                 conn.commit()
                 cursor.close()
@@ -882,7 +966,7 @@ class ComputersViewer(QMainWindow):
                 QMessageBox.information(self, "Успех", f"Компьютер успешно добавлен (ID: {computer_id})")
 
             except psycopg2.IntegrityError as e:
-                if "unique constraint" in str(e).lower() and "inventory_number" in str(e).lower():
+                if "unique constraint" in str(e).lower():
                     QMessageBox.critical(self, "Ошибка", "Компьютер с таким инвентарным номером уже существует")
                 else:
                     QMessageBox.critical(self, "Ошибка", f"Ошибка при добавлении записи: {e}")
@@ -932,52 +1016,31 @@ class ComputersViewer(QMainWindow):
                     WHERE id = %s
                 """, (name, inventory, manufacturer, model, purchase_date, self.current_id))
 
-                # Получаем список ID характеристик, которые остались в specs
-                kept_spec_ids = []
-
-                # Обновляем или добавляем характеристики
+                # Обновляем характеристики
                 for spec in specs:
                     spec_name, spec_value, spec_id = spec
 
-                    if not spec_name or not spec_value:
-                        continue
-
                     if spec_id:  # Существующая характеристика
-                        kept_spec_ids.append(spec_id)
                         cursor.execute("""
                             UPDATE invent.computer_specs
                             SET spec_name = %s, value = %s
                             WHERE id = %s AND computer_id = %s
                         """, (spec_name, spec_value, spec_id, self.current_id))
                     else:  # Новая характеристика
-                        try:
+                        if spec_name and spec_value:
                             cursor.execute("""
                                 INSERT INTO invent.computer_specs (computer_id, spec_name, value)
                                 VALUES (%s, %s, %s)
-                                RETURNING id
                             """, (self.current_id, spec_name, spec_value))
-                            new_id = cursor.fetchone()[0]
-                            kept_spec_ids.append(new_id)
-                        except psycopg2.IntegrityError:
-                            # Если характеристика с таким именем уже существует, обновляем её
-                            cursor.execute("""
-                                UPDATE invent.computer_specs
-                                SET value = %s
-                                WHERE computer_id = %s AND spec_name = %s
-                                RETURNING id
-                            """, (spec_value, self.current_id, spec_name))
-                            result = cursor.fetchone()
-                            if result:
-                                kept_spec_ids.append(result[0])
 
-                # Удаляем характеристики, которых нет в обновленном списке
-                if kept_spec_ids:
+                # Удаляем характеристики, которых больше нет в списке
+                existing_ids = [spec[2] for spec in specs if spec[2] is not None]
+                if existing_ids:
                     cursor.execute("""
                         DELETE FROM invent.computer_specs
                         WHERE computer_id = %s AND id NOT IN %s
-                    """, (self.current_id, tuple(kept_spec_ids)))
+                    """, (self.current_id, tuple(existing_ids)))
                 else:
-                    # Если нет ни одной характеристики, удаляем все
                     cursor.execute("""
                         DELETE FROM invent.computer_specs
                         WHERE computer_id = %s
@@ -991,7 +1054,7 @@ class ComputersViewer(QMainWindow):
                 QMessageBox.information(self, "Успех", "Компьютер успешно обновлен")
 
             except psycopg2.IntegrityError as e:
-                if "unique constraint" in str(e).lower() and "inventory_number" in str(e).lower():
+                if "unique constraint" in str(e).lower():
                     QMessageBox.critical(self, "Ошибка", "Компьютер с таким инвентарным номером уже существует")
                 else:
                     QMessageBox.critical(self, "Ошибка", f"Ошибка при обновлении записи: {e}")
